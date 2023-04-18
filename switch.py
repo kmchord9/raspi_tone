@@ -1,41 +1,49 @@
 import RPi.GPIO as GPIO
 import time
 import numpy as np
-from gpiozero import TonalBuzzer
-from gpiozero.pins.pigpio import PiGPIOFactory
-from gpiozero.tones import Tone
+import pigpio
+pi = pigpio.pi()
 
-#GPIO.cleanup()
+#周波数による音を出す関数
+def tone(freq):
+    #PWM_GPIO = 12
+    PWM_DUTY = 50 # デューティ比[%]
+    PWM_FREQ = freq # 周波数[Hz]
+
+    gpio = BUZZER_PIN
+    dutycycle = int(PWM_DUTY * 1000000 / 100.)
+    frequency = int(PWM_FREQ)
+
+    pi.hardware_PWM(gpio, frequency, dutycycle)
+
+    return
 
 #キーのピン配置設定
 GPIO_LIST = [
     [17,27,261],
     [22,23,293],
+    [24,25,329],
+    [7,8,349],
+    [9,10,391],
 ]
 
-KEY_STATUS = np.zeros(len(GPIO_LIST),dtype="int8")
-
+BUZZER_PIN = 12                                     #ブザーの番号
+KEY_STATUS = np.zeros(len(GPIO_LIST),dtype="int8")  #押しているキーの状態を管理
+BUZZER_FLAG = 0                                     #ブザーが鳴っていないときに0
 LED_OUT_CH = 18
-BUZZER_FLAG = 0
 
 #データの平均化処理用
-MEDIAN_ELEMNT_N = 10
+MEDIAN_ELEMNT_N = 20
 dataList = np.ones((len(GPIO_LIST),MEDIAN_ELEMNT_N),dtype="int16")
 
 #GPIOの初期化
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(LED_OUT_CH , GPIO.OUT)
 GPIO.output(LED_OUT_CH, GPIO.LOW)
-
 for OUT_CH, IN_CH,_ in GPIO_LIST:    
     GPIO.setup(OUT_CH, GPIO.OUT)    
     GPIO.setup(IN_CH, GPIO.IN)
     GPIO.output(OUT_CH, GPIO.LOW)
-
-#ブザー初期化
-BUZZER_PIN = 14
-factory = PiGPIOFactory()
-buzzer = TonalBuzzer(BUZZER_PIN, pin_factory=factory)
 
 while True:
     for i,(OUT_CH, IN_CH, freq) in enumerate(GPIO_LIST):
@@ -49,12 +57,10 @@ while True:
                 if channelIsOn==1:
                     break
                 
-            time.sleep(0.005)
+            time.sleep(0.001)
 
             dataList[i] = np.roll(dataList[i], -1)
             dataList[i][-1] = count
-
-            #print(dataList)
 
             if np.median(dataList[i]) > 3:
                 KEY_STATUS[i] = 1
@@ -68,18 +74,19 @@ while True:
             print("stop")
             GPIO.cleanup()
             break
-    
-    if (KEY_STATUS.sum()) and (not KEY_STATUS.prod()):
-            btn = np.argmax(KEY_STATUS)
-            if not BUZZER_FLAG:
-                buzzer.play(Tone(GPIO_LIST[btn][2]))
-                BUZZER_FLAG = 1
-            GPIO.output(LED_OUT_CH, GPIO.LOW)
-            
+
+    if 1 <= KEY_STATUS.sum() < 2:
+        btn = np.argmax(KEY_STATUS)
+        if not BUZZER_FLAG:
+            tone(GPIO_LIST[btn][2])
+            print(GPIO_LIST[btn][2])
+            BUZZER_FLAG = 1
+        GPIO.output(LED_OUT_CH, GPIO.LOW)
+               
     else:
-        buzzer.stop()
+        pi.write(BUZZER_PIN, 0)
         BUZZER_FLAG = 0
         GPIO.output(LED_OUT_CH, GPIO.HIGH)
-        #print(KEY_STATUS)
+        print(KEY_STATUS)
         
             
